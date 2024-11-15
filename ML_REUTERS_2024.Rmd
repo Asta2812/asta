@@ -1,0 +1,234 @@
+---
+title: "Machine learning for prediction emission scope 12 2023"
+author: "Asta Ouattara"
+date: "2024-10-28"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+## Preprocessing des données quantitatives
+
+standartisation des données avant le Machine learning. Pour les variables quantitaives et non pour les variables convertit en dummy one hot encoding
+
+```{r}
+setwd("C:/Users/M22527/Bpifrance/Raphael COTTIN - 2024-04_intensites_Asta")
+getwd()
+
+library(tidyverse)
+library(tidylog)
+library(dplyr)
+library(readxl)
+library(skimr)
+```
+
+Téchargement des données
+
+```{r}
+# chargement dataframe reuters et intensités statistiques ----------------------
+
+reuters24 <- read_xlsx("data/reuters_hybr_2024.xlsx")
+
+load("temp/reuters_temp.Rdata")
+```
+
+```{r}
+# pré-traitement des données  --------------------------------------------------
+
+reuters24 <- reuters24 %>% 
+  select(gics2bis, intens23 = med_int_2023_from_2024)
+```
+
+
+```{r}
+# recréer la variable gics2bis
+sect_intens <- c(
+  "coal & consumable fuels",
+  "construction materials",
+  "independent power producers & energy traders",
+  "steel",
+  "industrial gases",
+  "marine",
+  "airlines",
+  "fertilizers & agricultural chemicals",
+  "automotive retail",
+  "gas utilities",
+  "aluminum", 
+  "renewable electricity",
+  "packaged foods & meats",                  # scope 3
+  "aerospace & defense",                     # scope 3
+  "construction machinery & heavy trucks",   # scope 3 
+  "trading companies & distributors",        # scope 3
+  "agricultural products"                    # scope 3
+)
+```
+
+```{r}
+reuters_long_est <- reuters_long_est %>% 
+  # création d'une nomenclature hybride aux niveaux gics 4 et gics 2
+  mutate(
+    gics2bis = case_when(
+      gics_4 %in% sect_intens  ~  gics_4,
+      TRUE                     ~  gics_2)
+  )
+```
+
+```{r}
+# échantillon pour l'estimation
+
+reuters_2023 <- reuters_long_est |> 
+  filter(year == 2023)
+```
+
+
+```{r}
+# on vérifie qu'il n'y a plus de doublons
+reuters_2023 |> 
+  group_by(name_or_code) |> 
+  filter(n() > 1)
+```
+
+```{r}
+reuters_2023
+
+# mettre les codes gics et trbc en chaine de caracteres  
+# Pas très utile cette étape
+
+reuters_2023$code_gics_table <- as.character(reuters_2023$code_gics_table)
+reuters_2023$code_gics_1 <- as.character(reuters_2023$code_gics_1 )
+reuters_2023$code_gics_2 <- as.character(reuters_2023$code_gics_2)
+reuters_2023$code_gics_3 <- as.character(reuters_2023$code_gics_3)
+reuters_2023$code_gics_4 <- as.character(reuters_2023$code_gics_4)
+
+reuters_2023$trbc_economic_sector_code <- as.character(reuters_2023$trbc_economic_sector_code)
+reuters_2023$trbc_business_code <- as.character(reuters_2023$trbc_business_code)
+reuters_2023$trbc_industry_group_code <- as.character(reuters_2023$trbc_industry_group_code)
+reuters_2023$trbc_industry_code_37 <- as.character(reuters_2023$trbc_industry_code_37)
+reuters_2023$trbc_industry_code_38 <- as.character(reuters_2023$trbc_industry_code_38)
+
+
+```
+
+supression des colonnes unitiles dans le dataframe
+
+```{r}
+# Suppression des colonnes dans reuters 2023
+
+reuters_2023 <- 
+  reuters_2023 %>% 
+  select(-c(isin, nace, nace_code, naics_industry_group, naics_international,
+            naics_subsector, naics_sector, naics_national_industry, scope3, 
+            intensite_computed, currency, ric, year)) 
+
+colnames(reuters_2023)
+# Suppression des colonnes unitiles dans reuters 2023
+
+reuters_2023 <- 
+  reuters_2023 %>%
+  select(-c(intens_sc1, intens_sc2, 
+            intens_sc2_w, intens_sc1_w, scope2, scope1, ca))
+
+
+reuters_2023 <-
+  reuters_2023 %>% 
+  select(-c(gics_1, code_gics_1,code_gics_2,code_gics_3,code_gics_4,
+            trbc_business_code,trbc_industry_code_37,gics_2, gics_3,
+            gics_4, trbc_economic_sector_code,trbc_industry_group_code,
+            trbc_industry_code_38))
+
+
+
+
+reuters_2023 <-
+  reuters_2023 %>% 
+  select(-c(trbc_sector, trbc_economic_sector, trbc_business, trbc_industry_group,
+            trbc_industry_32, trbc_industry_33, name_or_code))
+
+
+
+reuters_2023 <-
+  reuters_2023 %>% 
+  select(-c(code_gics_table))
+```
+
+Création d'une colonne intensité bis qui correspond à la médiane  des intensités par secteur
+
+```{r}
+unique(reuters_2023$country) # créer une colonne pour les régions du monde
+
+```
+
+## Création de la colone region qui correspondant au continent de chaque pays
+```{r}
+
+# Créer un vecteur de pays et leurs continents correspondants
+continent <- c(
+  "singapore" = "Asia", "thailand" = "Asia", "kenya" = "Africa", 
+  "united kingdom" = "Europe", "united states of america" = "North America",
+  "australia" = "Oceania", "canada" = "North America", "philippines" = "Asia",
+  "hong kong" = "Asia", "oman" = "Asia", "italy" = "Europe", "brazil" = "South America",
+  "saudi arabia" = "Asia", "lithuania" = "Europe", "china" = "Asia", 
+  "india" = "Asia", "bahrain" = "Asia", "qatar" = "Asia", "germany" = "Europe", 
+  "poland" = "Europe", "japan" = "Asia", "mexico" = "North America", 
+  "norway" = "Europe", "south africa" = "Africa", "russia" = "Europe/Asia", 
+  "egypt" = "Africa", "chile" = "South America", "finland" = "Europe", 
+  "united arab emirates" = "Asia", "sweden" = "Europe", "switzerland" = "Europe", 
+  "korea" = "Asia", "belgium" = "Europe", "indonesia" = "Asia", 
+  "new zealand" = "Oceania", "malaysia" = "Asia", "argentina" = "South America", 
+  "kuwait" = "Asia", "france" = "Europe", "austria" = "Europe", 
+  "turkey" = "Europe/Asia", "netherlands" = "Europe", "denmark" = "Europe", 
+  "romania" = "Europe", "colombia" = "South America", "slovenia" = "Europe", 
+  "morocco" = "Africa", "cyprus" = "Europe", "taiwan" = "Asia", 
+  "luxembourg" = "Europe", "israel" = "Asia", "spain" = "Europe", 
+  "greece" = "Europe", "hungary" = "Europe", "portugal" = "Europe", 
+  "ireland" = "Europe", "cambodia" = "Asia", "uruguay" = "South America", 
+  "malta" = "Europe", "vietnam" = "Asia", "iceland" = "Europe", 
+  "peru" = "South America", "ukraine" = "Europe", "kazakhstan" = "Asia", 
+  "nigeria" = "Africa", "jordan" = "Asia", "palestine" = "Asia", 
+  "czechia" = "Europe", "mauritius" = "Africa", "pakistan" = "Asia", 
+  "panama" = "North America", "sri lanka" = "Asia", "mongolia" = "Asia"
+)
+```
+
+
+```{r}
+# Ajouter la colonne Region au dataframe
+reuters_2023 <- reuters_2023 %>%
+  mutate(Region = continent[country])
+```
+
+
+```{r}
+sum(is.na(reuters_2023))
+skimr::skim(reuters_2023)
+#" Supprimer toutes les valeurs manquantes
+```
+
+```{r}
+colnames(reuters_2023) 
+
+# création d'une variable "intensité bis" cohérente avec les chiffres de revenu
+
+reuters_2023 <- reuters_2023 %>% 
+  mutate(revenue_Musd = revenue_usd /1e6, 
+         intensite_bis = total / revenue_Musd) %>% 
+  select(-revenue_usd, -intensite, -contains("code_gics"))
+```
+
+
+```{r}
+# Suppression des colonnes unitiles dans la base de données
+# mettre les variables quantitative en log
+
+```
+
+
+
+```{r}
+# Suppression des valaurs manquantes dans le datframe reuters_2023
+
+reuters_2023 <-
+  reuters_2023 %>% 
+  na.omit()
+```
+

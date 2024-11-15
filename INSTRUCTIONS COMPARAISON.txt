@@ -1,0 +1,23 @@
+fichier co2stat_2022_gics4.xlsx:
+- colonnes `code_gics_4` et  int_sc12_EUR_2022 
+
+fichier EUROPE_full_GICS_VERS_NACE2_enr.xlsx:
+- unité d'observation : GICS (catégorie gics niv. 4)
+	> donne le ou les NAF A88 correspondants
+	> colonnes GICS et A_88
+- faire un left join avec co2stat_2022_gics4.xlsx
+	> jointure GICS = code_gics_4
+	> résultat: unité d'observation GICS*A_88
+
+fichier NAF_GICS, onglet "liste NAF"
+- selectionne les colonnes `A_88` et `A_64`
+- rightjoin avec le dataframe précent
+	> colonne de jointure A_88
+
+=> gics*A_88, une intensité, un code A_64
+
+group_by(A_64)
+- summary() min max de (int_sc12_EUR_2022)
+
+==================================================
+
